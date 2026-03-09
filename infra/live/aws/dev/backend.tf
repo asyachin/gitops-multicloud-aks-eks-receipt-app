@@ -1,9 +1,9 @@
 
 terraform {
   backend "s3" {
-    bucket  = var.bucket
-    key     = var.key
-    region  = var.region
+    bucket  = ascom-receipts-app-tfstate-319393fe
+    key     = gitops-terraform-aks-eks-receipt-app/dev/terraform.tfstate
+    region  = eu-north-1
     encrypt = true
   }
   required_providers {
