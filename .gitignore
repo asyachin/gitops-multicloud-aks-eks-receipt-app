@@ -107,3 +107,6 @@ logs/
 .secrets
 
 terraform.tfvars
+
+# Cursor IDE
+.cursorignore
