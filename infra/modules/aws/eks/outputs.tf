@@ -37,3 +37,12 @@ output "node_group_arn" {
   description = "ARN of the EKS managed node group"
   value       = aws_eks_node_group.main.arn
 }
+
+output "oidc_provider_arn" {
+  value = aws_iam_openid_connect_provider.eks.arn
+}
+
+output "oidc_issuer_url" {
+  value = aws_eks_cluster.main.identity[0].oidc[0].issuer
+}
+
