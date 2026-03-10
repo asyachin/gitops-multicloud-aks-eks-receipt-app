@@ -1,0 +1,109 @@
+# =============================================================================
+# SECRETS & SENSITIVE DATA
+# =============================================================================
+# Environment variables
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+
+# Terraform sensitive configs
+*.tfbackend
+!*.tfbackend.example
+**/backend.hcl
+!**/backend.hcl.example
+*.tfvars
+!*.tfvars.example
+
+# Ansible inventory with real IPs/hosts
+infra/ansible/playbooks/hosts
+!infra/ansible/playbooks/hosts.example
+
+# =============================================================================
+# INFRASTRUCTURE & DEPLOYMENT
+# =============================================================================
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+crash.log
+crash.*.log
+
+# Docker
+docker-compose.override.yml
+
+# =============================================================================
+# PROGRAMMING LANGUAGES
+# =============================================================================
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+*.egg-info/
+dist/
+build/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+package-lock.json
+yarn.lock
+
+# .NET / C#
+bin/
+obj/
+*.user
+*.suo
+*.cache
+.vs/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# =============================================================================
+# DATABASES
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+db-data/
+
+# =============================================================================
+# IDEs & EDITORS
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =============================================================================
+# OPERATING SYSTEMS
+# =============================================================================
+.DS_Store
+Thumbs.db
+
+# =============================================================================
+# LOGS
+# =============================================================================
+logs/
+*.log
+
+.secrets
+
+terraform.tfvars
