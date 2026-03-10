@@ -1,4 +1,4 @@
-# gitops-terraform-aks-eks-receipt-app
+# gitops-multicloud-aks-eks-receipt-app
 
 Multi-cloud GitOps infrastructure for deploying [fullstack-microservices-ci-receipts](https://github.com/ascom/fullstack-microservices-ci-receipts) — a fullstack microservices application for receipt management.
 
