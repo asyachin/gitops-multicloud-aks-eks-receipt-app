@@ -18,4 +18,4 @@ spec:
             region: eu-north-1
             # Explicitly specify the hosted zone to avoid ambiguity
             # and speed up DNS propagation checks
-            hostedZoneID: Z00169O0ZD4RI4KJC9BG
+            hostedZoneID: Z00169002D4RI4IKJC9BG

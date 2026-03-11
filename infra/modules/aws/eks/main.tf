@@ -22,7 +22,11 @@ resource "aws_launch_template" "nodes" {
 
   user_data = base64encode(<<-EOT
     #!/bin/bash
-    /etc/eks/bootstrap.sh ${var.cluster_name}
+    # --use-max-pods false lets prefix delegation control the pod limit (up to 110)
+    # instead of the default ENI-based calculation (17 for t3.medium)
+    /etc/eks/bootstrap.sh ${var.cluster_name} \
+      --use-max-pods false \
+      --kubelet-extra-args '--max-pods=110'
   EOT
   )
 
