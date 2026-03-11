@@ -45,8 +45,8 @@ spec:
               memory: 256Mi
           persistence:
             enabled: true
-            # gp2 is provided by the AWS EBS CSI Driver installed in aws-addons
-            storageClass: gp2
+            # gp3 offers better performance and lower cost than gp2
+            storageClass: gp3
             size: 10Gi
 
         # Disable Memcached-based caches — not required for single-binary / small scale
