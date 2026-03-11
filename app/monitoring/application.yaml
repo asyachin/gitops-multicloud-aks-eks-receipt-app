@@ -1,0 +1,83 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: "67.x"
+    helm:
+      releaseName: monitoring
+      values: |
+        prometheus:
+          prometheusSpec:
+            # Tune resources for t3.small nodes — adjust as the cluster scales
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 512Mi
+            retention: 7d
+
+        alertmanager:
+          alertmanagerSpec:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+
+        grafana:
+          admin:
+            # Reference a SealedSecret instead of storing plaintext credentials in Git
+            existingSecret: grafana-admin
+            passwordKey: admin-password
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          # Access is provided via ALB Ingress; no need for a LoadBalancer Service
+          service:
+            type: ClusterIP
+          additionalDataSources:
+            # Pre-configure Loki as a data source so logs are available immediately
+            - name: Loki
+              type: loki
+              url: http://loki:3100
+              access: proxy
+              isDefault: false
+
+        nodeExporter:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+
+        kubeStateMetrics:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Required for kube-prometheus-stack because it contains large CRDs
+      - ServerSideApply=true

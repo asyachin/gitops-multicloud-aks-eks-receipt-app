@@ -1,0 +1,21 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  # ClusterIssuer is cluster-scoped — it can be referenced from any namespace
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Let's Encrypt production endpoint — subject to rate limits
+    # Use https://acme-staging-v02.api.letsencrypt.org/directory for testing
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: asyachin@gmail.com
+    # Stores the ACME account private key used to sign certificate requests
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - dns01:
+          route53:
+            region: eu-north-1
+            # Explicitly specify the hosted zone to avoid ambiguity
+            # and speed up DNS propagation checks
+            hostedZoneID: Z00169O0ZD4RI4KJC9BG

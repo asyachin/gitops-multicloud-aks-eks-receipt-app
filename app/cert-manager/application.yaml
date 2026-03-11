@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: "v1.x"
+    helm:
+      releaseName: cert-manager
+      values: |
+        # Install CRDs as part of the Helm release so they are managed by ArgoCD
+        # crds.enabled replaces the deprecated installCRDs key as of cert-manager v1.15
+        crds:
+          enabled: true
+
+        serviceAccount:
+          create: true
+          annotations:
+            # IRSA: bind the cert-manager ServiceAccount to the IAM role
+            # that grants Route53 permissions for DNS-01 challenge
+            eks.amazonaws.com/role-arn: arn:aws:iam::899088266068:role/ascom-receipts-eks-cert-manager-role
+
+        # Propagate the IRSA annotation to the controller pods via environment variable
+        extraArgs:
+          - --issuer-ambient-credentials=true
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+  annotations:
+    # Use the AWS Load Balancer Controller to provision an internet-facing ALB
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Route traffic directly to pod IPs — recommended for ALB with IP mode
+    alb.ingress.kubernetes.io/target-type: ip
+    # ALB listens on both HTTP (80) and HTTPS (443)
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    # Redirect all HTTP traffic to HTTPS at the ALB level
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # cert-manager will issue a certificate from the letsencrypt-prod ClusterIssuer
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # ExternalDNS will create a Route53 A record for this hostname
+    external-dns.alpha.kubernetes.io/hostname: grafana.receipts.buechertausch.click
+spec:
+  tls:
+    - hosts:
+        - grafana.receipts.buechertausch.click
+      # cert-manager stores the issued TLS certificate in this Secret
+      secretName: grafana-tls
+  rules:
+    - host: grafana.receipts.buechertausch.click
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: monitoring-grafana
+                port:
+                  number: 80
