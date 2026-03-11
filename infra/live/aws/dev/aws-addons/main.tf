@@ -215,6 +215,44 @@ resource "aws_iam_role_policy_attachment" "cert_manager" {
 }
 
 # =============================================================================
+# ACM CERTIFICATE FOR GRAFANA
+# Free TLS certificate managed by AWS. ALB references it via ARN annotation.
+# DNS validation is fully automated via Route53 — no manual steps required.
+# =============================================================================
+
+resource "aws_acm_certificate" "grafana" {
+  domain_name       = "grafana.${var.domain_name}"
+  validation_method = "DNS"
+
+  lifecycle {
+    # Provision new certificate before destroying old one to avoid downtime
+    create_before_destroy = true
+  }
+}
+
+resource "aws_route53_record" "grafana_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.grafana.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.hosted_zone_id
+}
+
+resource "aws_acm_certificate_validation" "grafana" {
+  certificate_arn         = aws_acm_certificate.grafana.arn
+  validation_record_fqdns = [for record in aws_route53_record.grafana_cert_validation : record.fqdn]
+}
+
+# =============================================================================
 # HELM RELEASES
 # =============================================================================
 
@@ -276,5 +314,55 @@ resource "helm_release" "argocd" {
   depends_on = [
     kubernetes_namespace_v1.argocd,
     helm_release.aws_lb_controller,
+  ]
+}
+
+# =============================================================================
+# GRAFANA INGRESS
+# Managed by Terraform so the ACM certificate ARN is never hardcoded in Git.
+# The ARN is taken directly from aws_acm_certificate_validation.grafana which
+# lives in the same layer — no manual copy-paste required.
+# ExternalDNS reads the hostname annotation and creates the Route53 A record.
+# =============================================================================
+
+resource "kubernetes_manifest" "grafana_ingress" {
+  manifest = {
+    apiVersion = "networking.k8s.io/v1"
+    kind       = "Ingress"
+    metadata = {
+      name      = "grafana"
+      namespace = "monitoring"
+      annotations = {
+        "alb.ingress.kubernetes.io/scheme"           = "internet-facing"
+        "alb.ingress.kubernetes.io/target-type"      = "ip"
+        "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
+        "alb.ingress.kubernetes.io/ssl-redirect"     = "443"
+        "alb.ingress.kubernetes.io/certificate-arn"  = aws_acm_certificate_validation.grafana.certificate_arn
+        "external-dns.alpha.kubernetes.io/hostname"  = "grafana.${var.domain_name}"
+      }
+    }
+    spec = {
+      ingressClassName = "alb"
+      rules = [{
+        host = "grafana.${var.domain_name}"
+        http = {
+          paths = [{
+            path     = "/"
+            pathType = "Prefix"
+            backend = {
+              service = {
+                name = "monitoring-grafana"
+                port = { number = 80 }
+              }
+            }
+          }]
+        }
+      }]
+    }
+  }
+
+  depends_on = [
+    helm_release.aws_lb_controller,
+    aws_acm_certificate_validation.grafana,
   ]
 }
