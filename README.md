@@ -1,36 +1,62 @@
 # gitops-multicloud-aks-eks-receipt-app
 
-Multi-cloud GitOps infrastructure for deploying a fullstack microservices receipt management application on AWS EKS (and Azure AKS — planned).
+Multi-cloud GitOps infrastructure for deploying a fullstack receipt management application on AWS EKS (Azure AKS — planned).
+
+**Live**: https://receipts.buechertausch.click
 
 ## Stack
 
 | Tool | Role |
 |---|---|
-| **Terraform** | Provisions VPC, subnets, IAM, EKS cluster and node groups |
-| **ArgoCD** | Continuous delivery — syncs Helm charts from Git to the cluster |
-| **Helm** | Packages application services with per-environment value overrides |
+| **Terraform** | Provisions VPC, subnets, IAM, EKS cluster, addons, ACM certs, Ingresses |
+| **ArgoCD** | GitOps CD — App of Apps pattern, sync-wave ordering |
+| **Sealed Secrets** | Encrypts Kubernetes secrets for safe Git storage |
+| **AWS LB Controller** | Creates ALB/NLB from Kubernetes Ingress resources |
+| **ExternalDNS** | Manages Route53 DNS records from Ingress annotations |
+| **EBS CSI Driver** | Dynamic EBS volume provisioning (gp3 StorageClass) |
+| **cert-manager** | TLS certificates via Let's Encrypt (DNS-01 / Route53) |
+| **kube-prometheus-stack** | Prometheus + Grafana + Alertmanager |
+| **Loki + Alloy** | Log aggregation — Alloy collects, Loki stores |
 
 ## Repository structure
 
 ```
+app/                              # GitOps manifests (ArgoCD watches this)
+├── apps/
+│   ├── application.yaml          # Root App of Apps — apply once manually
+│   ├── sealed-secrets.yaml       # wave 1
+│   ├── storage.yaml              # wave 1 — gp3 StorageClass
+│   ├── cert-manager.yaml         # wave 2
+│   ├── loki.yaml                 # wave 2
+│   ├── monitoring.yaml           # wave 2 — kube-prometheus-stack
+│   ├── alloy.yaml                # wave 3
+│   ├── cert-manager-config.yaml  # wave 3 — ClusterIssuer
+│   ├── monitoring-config.yaml    # wave 3 — Grafana SealedSecret
+│   └── receipts.yaml             # wave 4
+├── receipts/
+│   ├── namespace.yaml
+│   ├── backend/                  # Django, port 9000
+│   ├── frontend/                 # Nginx + React, port 80
+│   ├── postgres/                 # StatefulSet + headless Service, PVC 5Gi gp3
+│   └── sealed-secrets/           # db-credentials + app-secret (kubeseal encrypted)
+├── cert-manager/
+│   └── cluster-issuer.yml        # Let's Encrypt production
+├── monitoring/
+│   └── grafana-sealed-secret.yaml
+└── storage/
+    └── gp3-storageclass.yaml
+
 infra/
-├── live/
-│   └── aws/
-│       ├── bootstrap/          # S3 backend + DynamoDB lock (apply once)
-│       └── dev/
-│           ├── dev.tfvars      # shared variables for all dev layers
-│           ├── aws-network/    # VPC, subnets, IGW, NAT GW, route tables
-│           ├── aws-iam/        # EKS cluster role + node group role
-│           ├── aws-eks/        # EKS cluster + managed node group (Ubuntu 22.04) + OIDC provider
-│           └── aws-addons/     # AWS LB Controller, ExternalDNS, ArgoCD (Helm)
-└── modules/
+└── live/
     └── aws/
-        ├── vpc/
-        ├── subnets/
-        ├── igw/
-        ├── nat_gw/
-        ├── routetable/
-        └── eks/                # EKS cluster + launch template + node group + OIDC
+        ├── bootstrap/            # S3 backend + DynamoDB lock (apply once)
+        └── dev/
+            ├── dev.tfvars        # shared variables for all dev layers
+            ├── aws-network/      # VPC, subnets, IGW, NAT GW, route tables
+            ├── aws-iam/          # EKS cluster role + node group role
+            ├── aws-eks/          # EKS cluster + node group + OIDC provider
+            └── aws-addons/       # LB Controller, ExternalDNS, EBS CSI, cert-manager,
+                                  # ArgoCD, ACM certs, Ingresses (receipts + grafana)
 ```
 
 ## Cloud targets
@@ -43,97 +69,152 @@ infra/
 ## Infrastructure layers (AWS dev)
 
 ### 1. bootstrap
-Creates S3 bucket for Terraform remote state. Apply once per account.
+Creates S3 bucket for Terraform remote state and DynamoDB table for state locking. Apply once per account.
 
-### 2. aws-network ✅ deployed
-- VPC `10.0.0.0/16` (`ascom-receipts-vpc`)
+### 2. aws-network
+- VPC `10.0.0.0/16`
 - 2 public subnets (eu-north-1a/b) — tagged `kubernetes.io/role/elb`
 - 2 private subnets (eu-north-1a/b) — tagged `kubernetes.io/role/internal-elb`
-- Internet Gateway, NAT Gateway (in public subnet az1)
-- Public and private route tables with associations
+- Internet Gateway, NAT Gateway, route tables
 
-### 3. aws-iam ✅ deployed
-- `ascom-receipts-eks-cluster-role` — for EKS control plane
-- `ascom-receipts-eks-node-group-role` — for worker nodes (AmazonEKSWorkerNodePolicy + AmazonEKS_CNI_Policy + AmazonEC2ContainerRegistryReadOnly)
+### 3. aws-iam
+- `ascom-receipts-eks-cluster-role` — EKS control plane
+- `ascom-receipts-eks-node-group-role` — worker nodes
 
-### 4. aws-eks ✅ deployed
-- EKS 1.32 cluster with private + public endpoint
-- Managed node group in private subnets
-- Ubuntu 22.04 Jammy (Canonical EKS-optimised AMI, `t3.small`, gp3 20 GiB, IMDSv2)
-- OIDC provider for IRSA (IAM Roles for Service Accounts)
-- Reads IAM role ARNs from `aws-iam` remote state
-- Discovers subnets from `aws-network` via `kubernetes.io` tags
+### 4. aws-eks
+- EKS 1.32, private + public endpoint
+- Managed node group in private subnets (`t3.small`, Ubuntu 22.04, gp3 20 GiB)
+- OIDC provider for IRSA
+- Outputs: `oidc_provider_arn`, `oidc_issuer_url` (consumed by aws-addons)
 
-### 5. aws-addons ✅ deployed
-- **AWS Load Balancer Controller** — provisions ALB/NLB from Kubernetes Ingress/Service resources
-  - IRSA role: `ascom-receipts-eks-lb-controller-role`
-- **ExternalDNS** — creates Route53 records for domain `receipts.buechertausch.click`
-  - IRSA role: `ascom-receipts-eks-external-dns-role`
-- **ArgoCD** — GitOps continuous delivery, installed in namespace `argocd`
-  - Service type: `ClusterIP` (access via port-forward or ALB Ingress)
+### 5. aws-addons
+IRSA roles for all addon service accounts (no static credentials):
+
+| Addon | IRSA Role | Permissions |
+|---|---|---|
+| AWS LB Controller | `*-lb-controller-role` | EC2, ELBv2 |
+| ExternalDNS | `*-external-dns-role` | Route53 record management |
+| EBS CSI Driver | `*-ebs-csi-role` | EC2 EBS volumes |
+| cert-manager | `*-cert-manager-role` | Route53 DNS-01 challenge |
+
+Also provisions:
+- ACM certificates for `receipts.buechertausch.click` and `grafana.receipts.buechertausch.click` with automatic Route53 DNS validation
+- Kubernetes Ingresses for receipts-app and Grafana (managed here so ACM ARNs never appear in Git)
+- Namespace `receipts` (must exist before the Ingress resource is applied)
+- Helm: aws-lb-controller, external-dns, ArgoCD
+
+## Application deployment (ArgoCD App of Apps)
+
+### Prerequisites
+- Terraform layers 1–5 applied
+- `kubectl` configured
+- `kubeseal` CLI installed
+
+### 1. Encrypt secrets
+
+```bash
+# DB credentials for PostgreSQL
+kubectl create secret generic db-credentials \
+  --namespace receipts \
+  --from-literal=POSTGRES_DB=receipts \
+  --from-literal=POSTGRES_USER=receipts \
+  --from-literal=POSTGRES_PASSWORD='<strong-password>' \
+  --dry-run=client -o yaml \
+  | kubeseal --controller-namespace kube-system \
+             --controller-name sealed-secrets \
+             --format yaml \
+  > app/receipts/sealed-secrets/db-credentials.yaml
+
+# Django app secret (DB_PASS must match POSTGRES_PASSWORD above)
+kubectl create secret generic app-secret \
+  --namespace receipts \
+  --from-literal=SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')" \
+  --from-literal=DB_HOST=postgres \
+  --from-literal=DB_NAME=receipts \
+  --from-literal=DB_USER=receipts \
+  --from-literal=DB_PASS='<strong-password>' \
+  --dry-run=client -o yaml \
+  | kubeseal --controller-namespace kube-system \
+             --controller-name sealed-secrets \
+             --format yaml \
+  > app/receipts/sealed-secrets/app-secret.yaml
+```
+
+### 2. Push manifests and bootstrap ArgoCD
+
+```bash
+git add app/
+git commit -m "feat: add app manifests"
+git push origin dev
+
+# Apply root Application once — ArgoCD takes over from here
+kubectl apply -f app/apps/application.yaml
+```
+
+ArgoCD will sync all child applications in sync-wave order automatically.
+
+### 3. Monitor
+
+```bash
+kubectl get applications -n argocd
+kubectl get pods -n receipts -w
+```
+
+## Full deploy sequence (from scratch)
+
+```bash
+# Infrastructure
+cd infra/live/aws/bootstrap && terraform init && terraform apply -var-file=backend.tfvars
+cd ../dev/aws-network       && terraform init && terraform apply -var-file=../dev.tfvars
+cd ../aws-iam               && terraform init && terraform apply -var-file=../dev.tfvars
+cd ../aws-eks               && terraform init && terraform apply -var-file=../dev.tfvars
+cd ../aws-addons            && terraform init && terraform apply -var-file=../dev.tfvars
+
+# Kubeconfig
+aws eks update-kubeconfig --region eu-north-1 --name ascom-receipts-eks
+
+# Encrypt secrets (requires sealed-secrets controller running)
+# ... see section above ...
+
+# GitOps bootstrap
+git push origin dev
+kubectl apply -f app/apps/application.yaml
+```
+
+## ArgoCD access
+
+```bash
+# Initial admin password
+kubectl get secret argocd-initial-admin-secret \
+  -n argocd \
+  -o jsonpath="{.data.password}" | base64 -d
+
+# UI (https://localhost:8080)
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
+## Grafana access
+
+Live: https://grafana.receipts.buechertausch.click
+
+Pre-configured data sources: Prometheus (default) + Loki.
 
 ## EKS node group defaults (`dev.tfvars`)
 
 | Parameter | Value |
 |---|---|
 | Kubernetes version | 1.32 |
-| Node AMI | Ubuntu 22.04 Jammy (Canonical) |
 | Instance type | t3.small |
+| AMI | Ubuntu 22.04 Jammy (Canonical EKS-optimised) |
 | Root disk | 20 GiB gp3 |
-| Desired / Min / Max nodes | 2 / 1 / 3 |
+| Desired / Min / Max | 2 / 1 / 3 |
+| Region | eu-north-1 |
 | Domain | receipts.buechertausch.click |
 
 ## Prerequisites
 
-- Terraform >= 1.5.0
-- AWS CLI configured (`aws configure`)
+- Terraform >= 1.5
+- AWS CLI + credentials configured
 - `kubectl`
 - `helm` >= 3
-
-## Deploy
-
-Each layer has its own state and is applied independently.
-
-```bash
-# 1. Bootstrap (first time only)
-cd infra/live/aws/bootstrap
-terraform init
-terraform apply -var-file=backend.tfvars
-
-# 2. Network
-cd infra/live/aws/dev/aws-network
-terraform init
-terraform apply -var-file=../dev.tfvars
-
-# 3. IAM
-cd infra/live/aws/dev/aws-iam
-terraform init
-terraform apply -var-file=../dev.tfvars
-
-# 4. EKS (includes OIDC provider)
-cd infra/live/aws/dev/aws-eks
-terraform init
-terraform apply -var-file=../dev.tfvars
-
-# 5. Addons (LB Controller + ExternalDNS + ArgoCD)
-cd infra/live/aws/dev/aws-addons
-terraform init
-terraform apply -var-file=../dev.tfvars
-
-# 6. Configure kubectl
-aws eks update-kubeconfig \
-  --region eu-north-1 \
-  --name ascom-receipts-eks
-```
-
-## ArgoCD access
-
-```bash
-# Get initial admin password
-kubectl get secret argocd-initial-admin-secret \
-  -n argocd \
-  -o jsonpath="{.data.password}" | base64 -d
-
-# Port-forward UI (open https://localhost:8080)
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-```
+- `kubeseal` (for secret encryption)
