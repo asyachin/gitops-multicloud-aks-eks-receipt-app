@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: receipts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      initContainers:
+        # Wait for DB to be ready before running Django
+        - name: wait-for-db
+          image: u745/receipebook-app:latest
+          command: ["python", "manage.py", "wait_for_db"]
+          envFrom:
+            - secretRef:
+                name: app-secret
+          env:
+            - name: DEBUG
+              value: "0"
+            - name: ALLOWED_HOSTS
+              value: "receipts.buechertausch.click,localhost"
+        # Apply migrations once during deployment
+        - name: migrate
+          image: u745/receipebook-app:latest
+          command: ["python", "manage.py", "migrate"]
+          envFrom:
+            - secretRef:
+                name: app-secret
+          env:
+            - name: DEBUG
+              value: "0"
+            - name: ALLOWED_HOSTS
+              value: "receipts.buechertausch.click,localhost"
+      containers:
+        - name: backend
+          image: u745/receipebook-app:latest
+          ports:
+            - containerPort: 9000
+          envFrom:
+            - secretRef:
+                name: app-secret
+          env:
+            - name: DEBUG
+              value: "0"
+            - name: ALLOWED_HOSTS
+              value: "receipts.buechertausch.click,localhost"
+          readinessProbe:
+            httpGet:
+              path: /api/health-check/
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi

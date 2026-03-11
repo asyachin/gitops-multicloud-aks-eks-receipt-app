@@ -1,8 +1,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: apps
+  name: monitoring-config
   namespace: argocd
+  annotations:
+    # Wave 3 — grafana-sealed-secret must exist before Grafana starts (wave 2)
+    # sealed-secrets controller (wave 1) must be ready to decrypt it
+    argocd.argoproj.io/sync-wave: "3"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -10,11 +14,13 @@ spec:
   source:
     repoURL: https://github.com/asyachin/gitops-multicloud-aks-eks-receipt-app
     targetRevision: dev
-    path: app/apps              # ArgoCD watches this folder
+    path: app/monitoring
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: monitoring
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

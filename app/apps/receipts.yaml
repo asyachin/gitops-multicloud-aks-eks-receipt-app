@@ -1,8 +1,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: apps
+  name: receipts
   namespace: argocd
+  annotations:
+    # Wave 4 — needs storage (wave 1) for postgres PVC and
+    # sealed-secrets (wave 1) to decrypt app-secret and db-credentials
+    argocd.argoproj.io/sync-wave: "4"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -10,10 +14,10 @@ spec:
   source:
     repoURL: https://github.com/asyachin/gitops-multicloud-aks-eks-receipt-app
     targetRevision: dev
-    path: app/apps              # ArgoCD watches this folder
+    path: app/receipts
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: receipts
   syncPolicy:
     automated:
       prune: true
