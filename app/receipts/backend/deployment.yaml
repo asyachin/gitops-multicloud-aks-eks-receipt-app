@@ -55,6 +55,9 @@ spec:
             httpGet:
               path: /api/health-check/
               port: 9000
+              httpHeaders:
+                - name: Host
+                  value: receipts.buechertausch.click
             initialDelaySeconds: 10
             periodSeconds: 10
           resources:
