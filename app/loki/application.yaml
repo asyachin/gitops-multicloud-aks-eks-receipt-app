@@ -1,0 +1,83 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: loki
+    targetRevision: "6.x"
+    helm:
+      releaseName: loki
+      values: |
+        # Single-binary mode runs all Loki components in one pod — suitable for small clusters
+        deploymentMode: SingleBinary
+
+        loki:
+          commonConfig:
+            replication_factor: 1
+          storage:
+            type: filesystem
+          schemaConfig:
+            configs:
+              - from: "2024-01-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: loki_index_
+                  period: 24h
+          # Disable multi-tenant mode — single-tenant setup for simplicity
+          auth_enabled: false
+
+        singleBinary:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          persistence:
+            enabled: true
+            # gp3 offers better performance and lower cost than gp2
+            storageClass: gp3
+            size: 10Gi
+
+        # Disable Memcached-based caches — not required for single-binary / small scale
+        chunksCache:
+          enabled: false
+        resultsCache:
+          enabled: false
+
+        # Disable distributed-mode components — only singleBinary replica is used
+        read:
+          replicas: 0
+        write:
+          replicas: 0
+        backend:
+          replicas: 0
+
+        # Bundled Grafana and Promtail are already deployed as separate ArgoCD Applications
+        grafana:
+          enabled: false
+        promtail:
+          enabled: false
+        gateway:
+          enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

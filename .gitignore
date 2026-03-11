@@ -106,6 +106,10 @@ logs/
 
 .secrets
 
+# Binary tools — install via package manager, do not store in repo
+kubeseal*
+*.tar.gz
+
 terraform.tfvars
 
 # Cursor IDE
