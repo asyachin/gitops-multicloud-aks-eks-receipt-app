@@ -114,3 +114,8 @@ terraform.tfvars
 
 # Cursor IDE
 .cursorignore
+
+terraform.tfvars
+
+*.tar.gz
+
