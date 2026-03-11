@@ -3,11 +3,13 @@ kind: Application
 metadata:
   name: alloy
   namespace: argocd
+  annotations:
+    # Wave 3 — needs Loki (wave 2) to be running before forwarding logs
+    argocd.argoproj.io/sync-wave: "3"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-
   source:
     repoURL: https://grafana.github.io/helm-charts
     chart: alloy
@@ -19,12 +21,10 @@ spec:
           configMap:
             create: true
             content: |
-              // Discover all pods in the cluster via the Kubernetes API
               discovery.kubernetes "pods" {
                 role = "pod"
               }
 
-              // Relabel discovered pod targets to extract useful metadata as log labels
               discovery.relabel "pods" {
                 targets = discovery.kubernetes.pods.targets
 
@@ -50,7 +50,6 @@ spec:
                 }
               }
 
-              // Read log files from the node filesystem based on relabeled targets
               local.file_match "pods" {
                 path_targets = discovery.relabel.pods.output
               }
@@ -60,7 +59,6 @@ spec:
                 forward_to = [loki.write.default.receiver]
               }
 
-              // Forward all collected logs to the Loki push API
               loki.write "default" {
                 endpoint {
                   url = "http://loki:3100/loki/api/v1/push"
@@ -75,7 +73,6 @@ spec:
               memory: 128Mi
 
         controller:
-          # DaemonSet ensures one Alloy instance per node for complete log coverage
           type: daemonset
 
         serviceAccount:

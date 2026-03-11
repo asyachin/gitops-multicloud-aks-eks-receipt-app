@@ -252,6 +252,99 @@ resource "aws_acm_certificate_validation" "grafana" {
   validation_record_fqdns = [for record in aws_route53_record.grafana_cert_validation : record.fqdn]
 }
 
+# ACM cert for receipts-app
+resource "aws_acm_certificate" "receipts" {
+  domain_name               = var.domain_name # receipts.buechertausch.click
+  subject_alternative_names = ["api.${var.domain_name}"]
+  validation_method         = "DNS"
+  lifecycle { create_before_destroy = true }
+}
+
+resource "aws_route53_record" "receipts_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.receipts.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.hosted_zone_id
+}
+
+resource "aws_acm_certificate_validation" "receipts" {
+  certificate_arn         = aws_acm_certificate.receipts.arn
+  validation_record_fqdns = [for r in aws_route53_record.receipts_cert_validation : r.fqdn]
+}
+
+resource "kubernetes_namespace_v1" "receipts" {
+  metadata {
+    name = "receipts"
+  }
+}
+
+# Ingress for receipts-app — ARN is taken from the resource, not hardcoded
+resource "kubernetes_manifest" "receipts_ingress" {
+  manifest = {
+    apiVersion = "networking.k8s.io/v1"
+    kind       = "Ingress"
+    metadata = {
+      name      = "receipts"
+      namespace = "receipts"
+      annotations = {
+        "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
+        "alb.ingress.kubernetes.io/target-type"     = "ip"
+        "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
+        "alb.ingress.kubernetes.io/ssl-redirect"    = "443"
+        "alb.ingress.kubernetes.io/certificate-arn" = aws_acm_certificate_validation.receipts.certificate_arn
+        "external-dns.alpha.kubernetes.io/hostname" = var.domain_name
+      }
+    }
+    spec = {
+      ingressClassName = "alb"
+      rules = [{
+        host = var.domain_name
+        http = {
+          paths = [
+            {
+              # /api/* & /admin/* → backend
+              path     = "/api"
+              pathType = "Prefix"
+              backend = {
+                service = { name = "backend", port = { number = 9000 } }
+              }
+            },
+            {
+              path     = "/admin"
+              pathType = "Prefix"
+              backend = {
+                service = { name = "backend", port = { number = 9000 } }
+              }
+            },
+            {
+              # all other paths → frontend
+              path     = "/"
+              pathType = "Prefix"
+              backend = {
+                service = { name = "frontend", port = { number = 80 } }
+              }
+            }
+          ]
+        }
+      }]
+    }
+  }
+  depends_on = [
+    helm_release.aws_lb_controller,
+    aws_acm_certificate_validation.receipts,
+    kubernetes_namespace_v1.receipts,
+  ]
+}
+
 # =============================================================================
 # HELM RELEASES
 # =============================================================================
@@ -264,12 +357,12 @@ resource "helm_release" "aws_lb_controller" {
   namespace  = "kube-system"
 
   set = [
-    { name = "clusterName",                                               value = var.cluster_name },
-    { name = "serviceAccount.create",                                     value = "true" },
-    { name = "serviceAccount.name",                                       value = "aws-load-balancer-controller" },
+    { name = "clusterName", value = var.cluster_name },
+    { name = "serviceAccount.create", value = "true" },
+    { name = "serviceAccount.name", value = "aws-load-balancer-controller" },
     { name = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn", value = aws_iam_role.lb_controller.arn },
-    { name = "region",                                                    value = var.region },
-    { name = "vpcId",                                                     value = var.vpc_id },
+    { name = "region", value = var.region },
+    { name = "vpcId", value = var.vpc_id },
   ]
 
   depends_on = [aws_iam_role_policy_attachment.lb_controller]
@@ -283,11 +376,11 @@ resource "helm_release" "external_dns" {
   namespace  = "kube-system"
 
   set = [
-    { name = "provider",                                                   value = "aws" },
-    { name = "aws.region",                                                 value = var.region },
+    { name = "provider", value = "aws" },
+    { name = "aws.region", value = var.region },
     { name = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn", value = aws_iam_role.external_dns.arn },
-    { name = "domainFilters[0]",                                           value = var.domain_name },
-    { name = "txtOwnerId",                                                 value = var.cluster_name },
+    { name = "domainFilters[0]", value = var.domain_name },
+    { name = "txtOwnerId", value = var.cluster_name },
   ]
 
   depends_on = [aws_iam_role_policy_attachment.external_dns]
@@ -317,6 +410,7 @@ resource "helm_release" "argocd" {
   ]
 }
 
+
 # =============================================================================
 # GRAFANA INGRESS
 # Managed by Terraform so the ACM certificate ARN is never hardcoded in Git.
@@ -333,12 +427,12 @@ resource "kubernetes_manifest" "grafana_ingress" {
       name      = "grafana"
       namespace = "monitoring"
       annotations = {
-        "alb.ingress.kubernetes.io/scheme"           = "internet-facing"
-        "alb.ingress.kubernetes.io/target-type"      = "ip"
-        "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
-        "alb.ingress.kubernetes.io/ssl-redirect"     = "443"
-        "alb.ingress.kubernetes.io/certificate-arn"  = aws_acm_certificate_validation.grafana.certificate_arn
-        "external-dns.alpha.kubernetes.io/hostname"  = "grafana.${var.domain_name}"
+        "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
+        "alb.ingress.kubernetes.io/target-type"     = "ip"
+        "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
+        "alb.ingress.kubernetes.io/ssl-redirect"    = "443"
+        "alb.ingress.kubernetes.io/certificate-arn" = aws_acm_certificate_validation.grafana.certificate_arn
+        "external-dns.alpha.kubernetes.io/hostname" = "grafana.${var.domain_name}"
       }
     }
     spec = {
