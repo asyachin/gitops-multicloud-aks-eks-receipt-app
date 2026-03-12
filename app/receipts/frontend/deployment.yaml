@@ -13,6 +13,10 @@ spec:
       labels:
         app: frontend
     spec:
+      volumes:
+        - name: media
+          persistentVolumeClaim:
+            claimName: media-pvc
       containers:
         - name: frontend
           image: u745/recipebook-frontend:latest
@@ -24,6 +28,10 @@ spec:
               value: backend
             - name: APP_PORT
               value: "9000"
+          volumeMounts:
+            - name: media
+              mountPath: /vol/web/media
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /
