@@ -4,6 +4,10 @@ Multi-cloud GitOps infrastructure for deploying a fullstack receipt management a
 
 **Live**: https://receipts.buechertausch.click
 
+## CI/CD Architecture
+
+![CI/CD Architecture](docs/images/cicd-architecture.png)
+
 ## Stack
 
 | Tool | Role |
@@ -179,3 +183,4 @@ Pre-configured data sources: Prometheus (default) + Loki.
 - `kubectl`
 - `helm` >= 3
 - `kubeseal` (for secret encryption)
+
