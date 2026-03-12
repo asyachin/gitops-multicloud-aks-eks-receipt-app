@@ -14,6 +14,7 @@ Multi-cloud GitOps infrastructure for deploying a fullstack receipt management a
 | **AWS LB Controller** | Creates ALB/NLB from Kubernetes Ingress resources |
 | **ExternalDNS** | Manages Route53 DNS records from Ingress annotations |
 | **EBS CSI Driver** | Dynamic EBS volume provisioning (gp3 StorageClass) |
+| **EFS CSI Driver** | Shared ReadWriteMany volume for recipe media files |
 | **cert-manager** | TLS certificates via Let's Encrypt (DNS-01 / Route53) |
 | **kube-prometheus-stack** | Prometheus + Grafana + Alertmanager |
 | **Loki + Alloy** | Log aggregation — Alloy collects, Loki stores |
@@ -95,12 +96,14 @@ IRSA roles for all addon service accounts (no static credentials):
 | AWS LB Controller | `*-lb-controller-role` | EC2, ELBv2 |
 | ExternalDNS | `*-external-dns-role` | Route53 record management |
 | EBS CSI Driver | `*-ebs-csi-role` | EC2 EBS volumes |
+| EFS CSI Driver | `*-efs-csi-role` | Amazon EFS |
 | cert-manager | `*-cert-manager-role` | Route53 DNS-01 challenge |
 
 Also provisions:
 - ACM certificates for `receipts.buechertausch.click` and `grafana.receipts.buechertausch.click` with automatic Route53 DNS validation
 - Kubernetes Ingresses for receipts-app and Grafana (managed here so ACM ARNs never appear in Git)
 - Namespace `receipts` (must exist before the Ingress resource is applied)
+- EFS filesystem + mount targets + `efs-sc` StorageClass + `media-pvc` PVC (`ReadWriteMany`, shared between backend and frontend pods)
 - Helm: aws-lb-controller, external-dns, ArgoCD
 
 ## Application deployment (ArgoCD App of Apps)
