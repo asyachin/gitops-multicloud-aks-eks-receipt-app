@@ -110,37 +110,7 @@ Also provisions:
 - `kubectl` configured
 - `kubeseal` CLI installed
 
-### 1. Encrypt secrets
-
-```bash
-# DB credentials for PostgreSQL
-kubectl create secret generic db-credentials \
-  --namespace receipts \
-  --from-literal=POSTGRES_DB=receipts \
-  --from-literal=POSTGRES_USER=receipts \
-  --from-literal=POSTGRES_PASSWORD='<strong-password>' \
-  --dry-run=client -o yaml \
-  | kubeseal --controller-namespace kube-system \
-             --controller-name sealed-secrets \
-             --format yaml \
-  > app/receipts/sealed-secrets/db-credentials.yaml
-
-# Django app secret (DB_PASS must match POSTGRES_PASSWORD above)
-kubectl create secret generic app-secret \
-  --namespace receipts \
-  --from-literal=SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')" \
-  --from-literal=DB_HOST=postgres \
-  --from-literal=DB_NAME=receipts \
-  --from-literal=DB_USER=receipts \
-  --from-literal=DB_PASS='<strong-password>' \
-  --dry-run=client -o yaml \
-  | kubeseal --controller-namespace kube-system \
-             --controller-name sealed-secrets \
-             --format yaml \
-  > app/receipts/sealed-secrets/app-secret.yaml
-```
-
-### 2. Push manifests and bootstrap ArgoCD
+### Push manifests and bootstrap ArgoCD
 
 ```bash
 git add app/
@@ -153,7 +123,7 @@ kubectl apply -f app/apps/application.yaml
 
 ArgoCD will sync all child applications in sync-wave order automatically.
 
-### 3. Monitor
+###  Monitor
 
 ```bash
 kubectl get applications -n argocd
@@ -181,32 +151,20 @@ git push origin dev
 kubectl apply -f app/apps/application.yaml
 ```
 
-## ArgoCD access
-
-```bash
-# Initial admin password
-kubectl get secret argocd-initial-admin-secret \
-  -n argocd \
-  -o jsonpath="{.data.password}" | base64 -d
-
-# UI (https://localhost:8080)
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-```
-
 ## Grafana access
 
 Live: https://grafana.receipts.buechertausch.click
 
 Pre-configured data sources: Prometheus (default) + Loki.
 
-## EKS node group defaults (`dev.tfvars`)
+## EKS node group defaults 
 
 | Parameter | Value |
 |---|---|
 | Kubernetes version | 1.32 |
-| Instance type | t3.small |
+| Instance type | t3.medium |
 | AMI | Ubuntu 22.04 Jammy (Canonical EKS-optimised) |
-| Root disk | 20 GiB gp3 |
+| Root disk | 30 GiB gp3 |
 | Desired / Min / Max | 2 / 1 / 3 |
 | Region | eu-north-1 |
 | Domain | receipts.buechertausch.click |
