@@ -38,6 +38,10 @@ spec:
               value: "0"
             - name: ALLOWED_HOSTS
               value: "receipts.buechertausch.click,localhost"
+      volumes:
+        - name: media
+          persistentVolumeClaim:
+            claimName: media-pvc
       containers:
         - name: backend
           image: u745/receipebook-app:latest
@@ -51,6 +55,9 @@ spec:
               value: "0"
             - name: ALLOWED_HOSTS
               value: "receipts.buechertausch.click,localhost"
+          volumeMounts:
+            - name: media
+              mountPath: /vol/web/media
           readinessProbe:
             httpGet:
               path: /api/health-check/

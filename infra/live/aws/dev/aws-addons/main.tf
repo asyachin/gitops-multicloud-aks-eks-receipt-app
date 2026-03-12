@@ -346,6 +346,150 @@ resource "kubernetes_manifest" "receipts_ingress" {
 }
 
 # =============================================================================
+# EFS (ELASTIC FILE SYSTEM) — Shared media volume for receipts app
+# Provides ReadWriteMany PVC so both backend (writer) and frontend (reader)
+# pods can access the same uploaded media files simultaneously.
+# =============================================================================
+
+data "aws_vpc" "main" {
+  id = var.vpc_id
+}
+
+data "aws_subnets" "private" {
+  filter {
+    name   = "vpc-id"
+    values = [var.vpc_id]
+  }
+  tags = {
+    "kubernetes.io/role/internal-elb" = "1"
+  }
+}
+
+resource "aws_security_group" "efs" {
+  name        = "${var.cluster_name}-efs-sg"
+  description = "Allow NFS traffic from within the VPC"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description = "NFS from VPC"
+    from_port   = 2049
+    to_port     = 2049
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.main.cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.cluster_name}-efs-sg"
+  }
+}
+
+resource "aws_efs_file_system" "media" {
+  creation_token   = "${var.cluster_name}-media"
+  performance_mode = "generalPurpose"
+  throughput_mode  = "bursting"
+  encrypted        = true
+
+  tags = {
+    Name = "${var.cluster_name}-media"
+  }
+}
+
+resource "aws_efs_mount_target" "media" {
+  for_each = toset(data.aws_subnets.private.ids)
+
+  file_system_id  = aws_efs_file_system.media.id
+  subnet_id       = each.value
+  security_groups = [aws_security_group.efs.id]
+}
+
+resource "aws_iam_role" "efs_csi" {
+  name = "${var.cluster_name}-efs-csi-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = local.oidc_provider_arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:efs-csi-controller-sa"
+          "${local.oidc_issuer_host}:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "efs_csi" {
+  role       = aws_iam_role.efs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy"
+}
+
+resource "aws_eks_addon" "efs_csi" {
+  cluster_name             = var.cluster_name
+  addon_name               = "aws-efs-csi-driver"
+  service_account_role_arn = aws_iam_role.efs_csi.arn
+
+  depends_on = [
+    aws_iam_role_policy_attachment.efs_csi,
+    aws_efs_mount_target.media,
+  ]
+}
+
+resource "kubernetes_manifest" "efs_storageclass" {
+  manifest = {
+    apiVersion = "storage.k8s.io/v1"
+    kind       = "StorageClass"
+    metadata = {
+      name = "efs-sc"
+    }
+    provisioner = "efs.csi.aws.com"
+    parameters = {
+      provisioningMode = "efs-ap"
+      fileSystemId     = aws_efs_file_system.media.id
+      directoryPerms   = "755"
+    }
+  }
+
+  depends_on = [aws_eks_addon.efs_csi]
+}
+
+resource "kubernetes_manifest" "media_pvc" {
+  manifest = {
+    apiVersion = "v1"
+    kind       = "PersistentVolumeClaim"
+    metadata = {
+      name      = "media-pvc"
+      namespace = "receipts"
+    }
+    spec = {
+      accessModes      = ["ReadWriteMany"]
+      storageClassName = "efs-sc"
+      resources = {
+        requests = {
+          storage = "5Gi"
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    kubernetes_manifest.efs_storageclass,
+    kubernetes_namespace_v1.receipts,
+  ]
+}
+
+# =============================================================================
 # HELM RELEASES
 # =============================================================================
 
