@@ -4,8 +4,6 @@ Multi-cloud GitOps infrastructure for deploying a fullstack receipt management a
 
 **Live**: https://receipts.buechertausch.click
 
-## CI/CD Architecture
-
 
 ## Stack
 
