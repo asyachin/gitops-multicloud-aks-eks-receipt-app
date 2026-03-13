@@ -296,6 +296,7 @@ resource "kubernetes_manifest" "receipts_ingress" {
       name      = "receipts"
       namespace = "receipts"
       annotations = {
+        "alb.ingress.kubernetes.io/group.name"      = "shared-alb"
         "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
         "alb.ingress.kubernetes.io/target-type"     = "ip"
         "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
@@ -571,6 +572,7 @@ resource "kubernetes_manifest" "grafana_ingress" {
       name      = "grafana"
       namespace = "monitoring"
       annotations = {
+        "alb.ingress.kubernetes.io/group.name"      = "shared-alb"
         "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
         "alb.ingress.kubernetes.io/target-type"     = "ip"
         "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
