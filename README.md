@@ -6,7 +6,6 @@ Multi-cloud GitOps infrastructure for deploying a fullstack receipt management a
 
 ## CI/CD Architecture
 
-![CI/CD Architecture](docs/images/cicd-architecture.png)
 
 ## Stack
 
