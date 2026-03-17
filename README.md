@@ -2,7 +2,7 @@
 
 Multi-cloud GitOps infrastructure for deploying a fullstack receipt management application on AWS EKS (Azure AKS — planned).
 
-**Live**: https://receipts.buechertausch.click
+
 
 
 ## Stack
