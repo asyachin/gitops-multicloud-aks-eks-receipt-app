@@ -4,14 +4,18 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">= 5.0"
+      version = ">= 4.0.0"
     }
   }
 
   backend "azurerm" {
-    container_name = "tfstate"
-    resource_group_name = "rg-tfstate"
+    container_name       = "tfstate"
+    resource_group_name  = "rg-tfstate"
     storage_account_name = "recipiptsu745"
-    key = "gitops-multicloud-aks-eks-receipt-app/infra/live/azure/dev/az-network/terraform.tfstate"
+    key                  = "gitops-multicloud-aks-eks-receipt-app/infra/live/azure/dev/az-network/terraform.tfstate"
   }
+}
+
+provider "azurerm" {
+  features {}
 }
