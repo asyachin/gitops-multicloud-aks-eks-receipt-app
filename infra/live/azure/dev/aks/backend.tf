@@ -12,7 +12,7 @@ terraform {
     container_name       = "tfstate"
     resource_group_name  = "rg-tfstate"
     storage_account_name = "recipiptsu745"
-    key                  = "gitops-multicloud-aks-eks-receipt-app/infra/live/azure/dev/az-network/terraform.tfstate"
+    key                  = "gitops-multicloud-aks-eks-receipt-app/infra/live/azure/dev/aks/terraform.tfstate"
   }
 }
 
