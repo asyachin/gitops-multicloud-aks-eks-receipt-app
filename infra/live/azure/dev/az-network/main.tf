@@ -3,6 +3,8 @@ locals {
     project     = var.project
     environment = var.environment
   }
+
+  availability_zones = ["1", "2"]
 }
 
 resource "azurerm_resource_group" "this" {
