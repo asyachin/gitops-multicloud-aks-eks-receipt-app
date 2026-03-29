@@ -3,8 +3,7 @@
 > GitOps-driven infrastructure for a full-stack web application across multiple cloud providers.  
 > AWS EKS is live. Azure AKS integration and Karmada-based multi-cluster federation are in active development.
 
-**Live demo:** https://receipts.buechertausch.click  
-**Grafana:** https://grafana.receipts.buechertausch.click
+
 
 ---
 
