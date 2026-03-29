@@ -219,4 +219,4 @@ kubectl get pods -n receipts -w
 
 ## License
 
-MIT
+[MIT](LICENSE)
